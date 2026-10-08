@@ -8,7 +8,9 @@ by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit h
 */
 
 #include <stdbool.h>
-#include <stdio.h>
+#include <stdlib.h> // x
+#include <stdio.h>	// x
+#include <math.h>
 #include "raylib.h"
 
 #include "resource_dir.h" // utility header for SearchAndSetResourceDir
@@ -31,6 +33,22 @@ void update_body(Body *body)
 
 	body->acceleration.x = 0;
 	body->acceleration.y = 0;
+}
+
+void limit_body_velocity(Body *body, float maxMag)
+{
+	float mag = sqrt(body->velocity.x * body->velocity.x + body->velocity.y * body->velocity.y);
+
+	if (mag > 0 && mag > maxMag)
+	{
+		body->velocity.x = maxMag * body->velocity.x / mag;
+		body->velocity.y = maxMag * body->velocity.y / mag;
+	}
+}
+
+void draw_body(Body *body)
+{
+	DrawCircle(body->position.x, body->position.y, body->radius, RED);
 }
 
 enum State
@@ -81,8 +99,9 @@ void draw_start_screen(enum State *state)
 
 	DrawText(buttonText, buttonTextX, buttonTextY, buttonTextFontSize, BLACK);
 
-	if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-
+	if (IsKeyReleased(KEY_ENTER))
+		*state = PLAYING;
+	else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
 	{
 		Vector2 mouse = GetMousePosition();
 
@@ -91,22 +110,46 @@ void draw_start_screen(enum State *state)
 
 		if (isWithinX && isWithinY)
 			*state = PLAYING;
+	}
+}
+
+void play(Body *player, int *score, bool *keyUpPressed)
+{
+	float maxMag = 5;
+	float gravity = .25;
+	float upwardsForce = 10;
+
+	if (IsKeyPressed(KEY_UP))
+		if (!(*keyUpPressed))
+		{
+			player->acceleration.y -= upwardsForce;
+			*keyUpPressed = true;
 		}
+
+	if (IsKeyReleased(KEY_UP))
+		*keyUpPressed = false;
+
+	player->acceleration.y += gravity;
+
+	update_body(&(*player));
+	limit_body_velocity(&(*player), maxMag);
+	draw_body(&(*player));
 }
 
 int main()
 {
+	int WIDTH = 800;
+	int HEIGHT = 600;
 	enum State state = START;
+	Body player = {.position = {WIDTH / 10, 300}, .velocity = {0, 0}, .acceleration = {0, 0}, .radius = 25};
 	int score = 0;
-
-	double gravity = .01;
-	Body ball = {.position = {400, 300}, .velocity = {0, 0}, .acceleration = {0, 0}, .radius = 10};
+	bool keyUpPressed = false;
 
 	// Tell the window to use vsync and work on high DPI displays
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
 
 	// Create the window and OpenGL context
-	InitWindow(800, 600, "Hello Raylib");
+	InitWindow(WIDTH, HEIGHT, "Hello Raylib");
 
 	SetTargetFPS(60);
 
@@ -115,8 +158,6 @@ int main()
 
 	// Load a texture from the resources directory
 	// Texture wabbit = LoadTexture("wabbit_alpha.png");
-
-	// game loop
 
 	while (!WindowShouldClose()) // run the loop until the user presses ESCAPE or presses the Close button on the window
 	{
@@ -127,6 +168,10 @@ int main()
 
 		if (state == START)
 			draw_start_screen(&state);
+		else if (state == PLAYING)
+			play(&player, &score, &keyUpPressed);
+
+		// printf("keyUpPressed: %d\n", keyUpPressed);
 
 		EndDrawing();
 
