@@ -1,11 +1,5 @@
-/*
-Raylib example file.
-This is an example main file for a simple raylib project.
-Use this as a starting point or replace it with your code.
-
-by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit https://creativecommons.org/publicdomain/zero/1.0/
-
-*/
+#define WIDTH 800
+#define HEIGHT 600
 
 #include <stdbool.h>
 #include <stdlib.h> // x
@@ -15,42 +9,6 @@ by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit h
 
 #include "resource_dir.h" // utility header for SearchAndSetResourceDir
 
-typedef struct
-{
-	Vector2 position;
-	Vector2 velocity;
-	Vector2 acceleration;
-	int radius;
-} Body;
-
-void update_body(Body *body)
-{
-	body->velocity.x += body->acceleration.x;
-	body->velocity.y += body->acceleration.y;
-
-	body->position.x += body->velocity.x;
-	body->position.y += body->velocity.y;
-
-	body->acceleration.x = 0;
-	body->acceleration.y = 0;
-}
-
-void limit_body_velocity(Body *body, float maxMag)
-{
-	float mag = sqrt(body->velocity.x * body->velocity.x + body->velocity.y * body->velocity.y);
-
-	if (mag > 0 && mag > maxMag)
-	{
-		body->velocity.x = maxMag * body->velocity.x / mag;
-		body->velocity.y = maxMag * body->velocity.y / mag;
-	}
-}
-
-void draw_body(Body *body)
-{
-	DrawCircle(body->position.x, body->position.y, body->radius, RED);
-}
-
 enum State
 {
 	START,
@@ -58,6 +16,53 @@ enum State
 	PAUSED,
 	GAME_OVER
 };
+
+typedef struct Player
+{
+	Vector2 position;
+	Vector2 velocity;
+	Vector2 acceleration;
+	int size;
+} Player;
+
+typedef struct PipePair
+{
+	Rectangle container;
+	int topHeight;
+	int bottHeight;
+} PipePair;
+
+void update_player(Player *player)
+{
+	player->velocity.x += player->acceleration.x;
+	player->velocity.y += player->acceleration.y;
+
+	player->position.x += player->velocity.x;
+	player->position.y += player->velocity.y;
+
+	player->acceleration.x = 0;
+	player->acceleration.y = 0;
+}
+
+void limit_player_velocity(Player *player, float maxMag)
+{
+	float e = 1e-3;
+	float mag = sqrt(player->velocity.x * player->velocity.x + player->velocity.y * player->velocity.y);
+
+	if (mag > e && mag > maxMag)
+	{
+		player->velocity.x = maxMag * player->velocity.x / mag;
+		player->velocity.y = maxMag * player->velocity.y / mag;
+	}
+}
+
+void draw_player(Player *player)
+{
+	int x = player->position.x - player->size / 2;
+	int y = player->position.y - player->size / 2;
+
+	DrawRectangle(x, y, player->size, player->size, RED);
+}
 
 void draw_start_screen(enum State *state)
 {
@@ -113,7 +118,80 @@ void draw_start_screen(enum State *state)
 	}
 }
 
-void play(Body *player, int *score, bool *keyUpPressed)
+void randomize_pipe_size(PipePair *pair, int playerSize)
+{
+	int minHeight = pair->container.height * .25;
+	int available = pair->container.height - 2 * (2 * playerSize + minHeight);
+	int first = rand() % available;
+	int second = available - first;
+
+	pair->topHeight = first + minHeight;
+	pair->bottHeight = second + minHeight;
+}
+
+void reset_pipe(PipePair *pair, int pipeCount, int pipeSpacing, int playerSize)
+{
+	int x = (pipeCount - 1) * (pair->container.width + pipeSpacing);
+
+	pair->container.x = x + pipeSpacing;
+
+	randomize_pipe_size(pair, playerSize);
+}
+
+void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
+{
+	float speed = -5;
+
+	int padding = 100;
+
+	for (int i = 0; i < pipeCount; i++)
+	{
+		int idx = (*firstIdx + i) % pipeCount;
+
+		PipePair *pair = &pipes[i];
+
+		char str[32];
+
+		snprintf(str, sizeof(str), "item %d", i);
+
+		// DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->container.height, ORANGE);
+		DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->topHeight, RED);
+		DrawRectangle(pair->container.x, pair->container.y + pair->container.height - pair->bottHeight, pair->container.width, pair->bottHeight, RED);
+		// DrawText(str, pair->container.x + 10, pair->container.y + 10, 10, YELLOW);
+
+		pair->container.x += speed;
+	}
+}
+
+void draw_score(int score)
+{
+	char str[32];
+
+	snprintf(str, sizeof(str), "score: %d", score);
+
+	int fontSize = 20;
+	int textWidth = MeasureText(str, fontSize);
+	int padding = 10;
+	int boxWidth = textWidth + 2 * padding;
+	int boxHeight = fontSize + 2 * padding;
+	int margin = 20;
+	int boxX = WIDTH - boxWidth - margin;
+	int boxY = boxHeight + margin;
+
+	DrawRectangle(boxX, boxY, boxWidth, boxHeight, YELLOW);
+
+	int textX = boxX + padding;
+	int textY = boxY + padding;
+
+	DrawText(str, textX, textY, fontSize, RED);
+}
+
+bool detect_collision(PipePair *pairs, int pipeCount, Player *player)
+{
+	return false;
+}
+
+void play(PipePair *pairs, int pipeCount, int *firstIdx, int pipeSpacing, Player *player, int *score, bool *keyUpPressed)
 {
 	float maxMag = 5;
 	float gravity = .25;
@@ -131,37 +209,87 @@ void play(Body *player, int *score, bool *keyUpPressed)
 
 	player->acceleration.y += gravity;
 
-	update_body(&(*player));
-	limit_body_velocity(&(*player), maxMag);
-	draw_body(&(*player));
+	update_player(&(*player));
+	limit_player_velocity(&(*player), maxMag);
+	draw_player(player);
+	draw_pipes(pairs, pipeCount, firstIdx, pipeSpacing);
+	draw_score(*score);
+
+	bool collided = detect_collision(pairs, pipeCount, player);
+
+	if (collided)
+	{
+		printf("fuck\n");
+
+		return;
+	}
+
+	PipePair *first = &pairs[*firstIdx];
+
+	if (first->container.x + first->container.width < 0)
+	{
+		reset_pipe(first, pipeCount, pipeSpacing, player->size);
+		*firstIdx = (*firstIdx + 1) % pipeCount;
+		*score += 1;
+	}
+}
+
+int compute_obstacle_count(int width, int spacing)
+{
+	int count = (int)ceil((float)(WIDTH + spacing) / (width + spacing));
+
+	return count;
+}
+
+PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSize)
+{
+	PipePair *pipes = malloc(sizeof(*pipes) * pipeCount);
+
+	for (int i = 0; i < pipeCount; i++)
+	{
+		PipePair pair = {
+			.container = (Rectangle){
+				.x = i * (pipeWidth + pipeSpacing) + WIDTH,
+				.y = 0,
+				.width = pipeWidth,
+				.height = HEIGHT},
+			.topHeight = 0,
+			.bottHeight = 0,
+		};
+
+		randomize_pipe_size(&pair, playerSize);
+
+		pipes[i] = pair;
+	}
+
+	return pipes;
 }
 
 int main()
 {
-	int WIDTH = 800;
-	int HEIGHT = 600;
+	InitWindow(WIDTH, HEIGHT, "Flappy Bird");
+
 	enum State state = START;
-	Body player = {.position = {WIDTH / 10, 300}, .velocity = {0, 0}, .acceleration = {0, 0}, .radius = 25};
+	Player player = {.position = {WIDTH / 10, 300}, .velocity = {0, 0}, .acceleration = {0, 0}, .size = 30};
 	int score = 0;
 	bool keyUpPressed = false;
 
+	int firstIdx = 0;
+	int pipeWidth = 50;
+	int pipeSpacing = 200;
+	int pipeCount = compute_obstacle_count(pipeWidth, pipeSpacing);
+	PipePair *pipes = make_pipes(pipeCount, pipeWidth, pipeSpacing, player.size);
+
 	// Tell the window to use vsync and work on high DPI displays
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-
-	// Create the window and OpenGL context
-	InitWindow(WIDTH, HEIGHT, "Hello Raylib");
 
 	SetTargetFPS(60);
 
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
 
-	// Load a texture from the resources directory
-	// Texture wabbit = LoadTexture("wabbit_alpha.png");
-
 	while (!WindowShouldClose()) // run the loop until the user presses ESCAPE or presses the Close button on the window
 	{
-
 		BeginDrawing();
 
 		ClearBackground(RAYWHITE);
@@ -169,41 +297,17 @@ int main()
 		if (state == START)
 			draw_start_screen(&state);
 		else if (state == PLAYING)
-			play(&player, &score, &keyUpPressed);
+			play(pipes, pipeCount, &firstIdx, pipeSpacing, &player, &score, &keyUpPressed);
 
-		// printf("keyUpPressed: %d\n", keyUpPressed);
+		// draw_pipes(pipes, pipeCount, &firstIdx, pipeSpacing);
 
 		EndDrawing();
-
-		// ball.acceleration.y = gravity;
-
-		// if (IsKeyDown(KEY_UP))
-		// {
-		// 	ball.velocity.y -= .1;
-		// }
-
-		// update_body(&ball);
-
-		// // drawing
-		// BeginDrawing();
-
-		// // Setup the back buffer for drawing (clear color and depth buffers)
-		// ClearBackground(BLACK);
-
-		// // draw our texture to the screen
-		// // DrawTexture(wabbit, 400, 200, WHITE);
-
-		// DrawCircleV(ball.position, ball.radius, RED);
-
-		// // end the frame and get ready for the next one  (display frame, poll input, etc...)
-		// EndDrawing();
 	}
-
-	// cleanup
-	// unload our texture so it can be cleaned up
-	// UnloadTexture(wabbit);
 
 	// destroy the window and cleanup the OpenGL context
 	CloseWindow();
+
+	free(pipes);
+
 	return 0;
 }
