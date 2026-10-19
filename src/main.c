@@ -66,7 +66,6 @@ void draw_player(Player *player)
 
 void draw_start_screen(enum State *state)
 {
-
 	int containerWidth = GetScreenWidth() * .5;
 	int containerHeight = GetScreenHeight() * .7;
 	int containerX = (GetScreenWidth() - containerWidth) / 2;
@@ -186,8 +185,46 @@ void draw_score(int score)
 	DrawText(str, textX, textY, fontSize, RED);
 }
 
+bool rects_overlap(Vector2 l1, Vector2 r1, Vector2 l2, Vector2 r2)
+{
+	if (l1.x > r2.x || l2.x > r1.x)
+		return false;
+
+	if (l1.y < r2.y || l2.y < r1.y)
+		return false;
+
+	return true;
+}
+
 bool detect_collision(PipePair *pairs, int pipeCount, Player *player)
 {
+	for (int i = 0; i < pipeCount; i++)
+	{
+		PipePair pair = pairs[i];
+		Vector2 topPipeTopLeft = {.x = pair.container.x, .y = pair.container.y};
+		Vector2 topPipeBottRight = {.x = pair.container.x + pair.container.width, .y = pair.container.y + pair.topHeight};
+		Vector2 bottPipeTopLeft = {.x = pair.container.x, .y = pair.container.y + pair.container.height - pair.bottHeight};
+		Vector2 bottPipeBottRight = {.x = pair.container.x + pair.container.width, .y = pair.container.y + pair.container.height};
+
+		DrawCircle(topPipeTopLeft.x, topPipeTopLeft.y, 10, LIGHTGRAY);
+		DrawCircle(topPipeBottRight.x, topPipeBottRight.y, 10, DARKGRAY);
+
+		DrawCircle(bottPipeTopLeft.x, bottPipeTopLeft.y, 10, GREEN);
+		DrawCircle(bottPipeBottRight.x, bottPipeBottRight.y, 10, YELLOW);
+
+		Vector2 playerTopLeft = {.x = player->position.x - player->size / 2, .y = player->position.y - player->size / 2};
+		Vector2 playerBottRight = {.x = player->position.x + player->size / 2, .y = player->position.y + player->size / 2};
+
+		DrawCircle(playerTopLeft.x, playerTopLeft.y, 10, ORANGE);
+		DrawCircle(playerBottRight.x, playerBottRight.y, 10, PINK);
+
+		bool intersect = rects_overlap(topPipeTopLeft, topPipeBottRight, playerTopLeft, playerBottRight) ||
+						 rects_overlap(bottPipeTopLeft, bottPipeBottRight, playerTopLeft, playerBottRight);
+
+		if (intersect)
+			return true;
+	}
+
 	return false;
 }
 
@@ -219,7 +256,7 @@ void play(PipePair *pairs, int pipeCount, int *firstIdx, int pipeSpacing, Player
 
 	if (collided)
 	{
-		printf("fuck\n");
+		printf("fuck!\n");
 
 		return;
 	}
