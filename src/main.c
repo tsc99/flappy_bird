@@ -23,11 +23,13 @@ typedef struct Player
 	Vector2 velocity;
 	Vector2 acceleration;
 	int size;
+
 } Player;
 
 typedef struct PipePair
 {
 	Rectangle container;
+	bool impacted;
 	int topHeight;
 	int bottHeight;
 } PipePair;
@@ -62,6 +64,135 @@ void draw_player(Player *player)
 	int y = player->position.y - player->size / 2;
 
 	DrawRectangle(x, y, player->size, player->size, RED);
+}
+
+bool is_button_clicked(int x, int y, int width, int height)
+{
+	if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+		return false;
+
+	Vector2 mouse = GetMousePosition();
+
+	bool isWithinX = x <= mouse.x && mouse.x <= x + width;
+	bool isWithinY = y <= mouse.y && mouse.y <= y + height;
+
+	if (isWithinX && isWithinX)
+		return true;
+
+	return false;
+}
+
+void draw_paused_screen(enum State *state)
+{
+	int containerWidth = GetScreenWidth() * .5;
+	int containerHeight = GetScreenHeight() * .7;
+	int containerX = (GetScreenWidth() - containerWidth) / 2;
+	int containerY = (GetScreenHeight() - containerHeight) / 2;
+
+	DrawRectangle(containerX, containerY, containerWidth, containerHeight, LIGHTGRAY);
+
+	char *h1 = "PAUSED";
+	int h1FontSize = 40;
+	int h1Width = MeasureText(h1, h1FontSize);
+	int h1X = containerX + (containerWidth - h1Width) / 2;
+	int h1Y = containerY + containerHeight / 4;
+
+	DrawText(h1, h1X, h1Y, h1FontSize, BLACK);
+
+	char *buttText = "RESUME";
+	int buttFontSize = 20;
+	int buttTextSize = MeasureText(buttText, buttFontSize);
+	int buttPadding = 10;
+	int buttWidth = buttTextSize + 2 * buttPadding;
+	int buttHeight = buttFontSize + 2 * buttPadding;
+	int buttX = containerX + (containerWidth - buttWidth) / 2;
+	int buttY = containerY + containerHeight / 2;
+
+	DrawRectangle(buttX, buttY, buttWidth, buttHeight, GRAY);
+
+	int buttTextX = buttX + buttPadding;
+	int buttTextY = buttY + buttPadding;
+
+	DrawText(buttText, buttTextX, buttTextY, buttFontSize, BLACK);
+
+	if (is_button_clicked(buttX, buttY, buttWidth, buttHeight) || IsKeyPressed(KEY_P))
+		*state = PLAYING;
+}
+
+void draw_game_over_screen(enum State *state, int score)
+{
+	int containerWidth = GetScreenWidth() * .5;
+	int containerHeight = GetScreenHeight() * .7;
+	int containerX = (GetScreenWidth() - containerWidth) / 2;
+	int containerY = (GetScreenHeight() - containerHeight) / 2;
+
+	DrawRectangle(containerX, containerY, containerWidth, containerHeight, LIGHTGRAY);
+
+	char *h1Text = "GAME OVER";
+	int h1FontSize = 40;
+	int h1Width = MeasureText(h1Text, h1FontSize);
+	int h1X = containerX + (containerWidth - h1Width) / 2;
+	int h1Y = containerY + containerHeight / 4;
+
+	DrawText(h1Text, h1X, h1Y, h1FontSize, BLACK);
+
+	char scoreMessage[32];
+
+	snprintf(scoreMessage, sizeof(scoreMessage), "SCORE: %d", score);
+
+	int scoreFontSize = 30;
+	int scoreWidth = MeasureText(scoreMessage, scoreFontSize);
+	int scoreBoxPadding = 10;
+	int scoreBoxWidth = scoreWidth + 2 * scoreBoxPadding;
+	int scoreBoxHeight = scoreFontSize + 2 * scoreBoxPadding;
+	int scoreBoxX = containerX + (containerWidth - scoreBoxWidth) / 2;
+	int scoreBoxY = containerY + containerHeight / 2.25 - scoreBoxHeight / 2;
+
+	int scoreX = scoreBoxX + scoreBoxPadding;
+	int scoreY = scoreBoxY + scoreBoxPadding;
+
+	DrawRectangle(scoreBoxX, scoreBoxY, scoreBoxWidth, scoreBoxHeight, YELLOW);
+	DrawText(scoreMessage, scoreX, scoreY, scoreFontSize, BLACK);
+
+	int buttsBoxWidth = .8 * containerWidth;
+	int buttsBoxHeight = 75;
+	int buttsBoxX = containerX + (containerWidth - buttsBoxWidth) / 2;
+	int buttsBoxY = containerY + 2 * containerHeight / 3;
+	int buttsBoxPadd = 10;
+
+	DrawRectangle(buttsBoxX, buttsBoxY, buttsBoxWidth, buttsBoxHeight, LIGHTGRAY);
+
+	int buttWidth = buttsBoxWidth * .4;
+	int buttHeight = buttsBoxHeight - 2 * buttsBoxPadd;
+	int leftButtX = buttsBoxX + buttsBoxPadd;
+	int leftButtY = buttsBoxY + buttsBoxPadd;
+	int rightButtX = buttsBoxX + buttsBoxWidth - buttsBoxPadd - buttWidth;
+	int rightButtY = buttsBoxY + buttsBoxPadd;
+
+	DrawRectangle(leftButtX, leftButtY, buttWidth, buttHeight, GRAY);
+	DrawRectangle(rightButtX, rightButtY, buttWidth, buttHeight, GRAY);
+
+	int buttPadd = 5;
+	int buttFontSize = 20;
+
+	char *leftButtText = "HOME";
+	int leftTextWidth = MeasureText(leftButtText, buttFontSize);
+	int leftTextX = leftButtX + (buttWidth - leftTextWidth) / 2;
+	int leftTextY = leftButtY + (buttHeight - buttFontSize) / 2;
+
+	DrawText(leftButtText, leftTextX, leftTextY, buttFontSize, BLACK);
+
+	char *rightButtText = "QUIT";
+	int rightTextWidth = MeasureText(rightButtText, buttFontSize);
+	int rightTextX = rightButtX + (buttWidth - rightTextWidth) / 2;
+	int rightTextY = rightButtY + (buttHeight - buttFontSize) / 2;
+
+	DrawText(rightButtText, rightTextX, rightTextY, buttFontSize, BLACK);
+
+	if (is_button_clicked(leftButtX, leftButtY, buttWidth, buttHeight) || IsKeyReleased(KEY_ENTER))
+		*state = START;
+	else if (is_button_clicked(rightButtX, rightButtY, buttWidth, buttHeight) || IsKeyReleased(KEY_Q))
+		CloseWindow();
 }
 
 void draw_start_screen(enum State *state)
@@ -105,60 +236,30 @@ void draw_start_screen(enum State *state)
 
 	if (IsKeyReleased(KEY_ENTER))
 		*state = PLAYING;
-	else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+	else if (is_button_clicked(buttonX, buttonY, buttonWidth, buttonHeight))
+		*state = PLAYING;
+}
+
+void draw_lives(int lives)
+{
+	int liveSize = 10;
+	int gap = 10;
+	int padding = 10;
+	int containerWidth = lives * liveSize + 2 * padding + (lives - 1) * gap;
+	int containerHeight = liveSize + 2 * padding;
+	int marginTop = 100;
+	int marginRight = 20;
+	int containerX = WIDTH - marginRight - containerWidth;
+	int containerY = marginTop;
+
+	DrawRectangle(containerX, containerY, containerWidth, containerHeight, LIGHTGRAY);
+
+	for (int i = 0; i < lives; i++)
 	{
-		Vector2 mouse = GetMousePosition();
+		int xi = containerX + padding + gap * (i - 1) + i * liveSize;
+		int yi = containerY + (containerHeight - liveSize) / 2;
 
-		bool isWithinX = buttonX <= mouse.x && mouse.x <= buttonX + buttonWidth;
-		bool isWithinY = buttonY <= mouse.y && mouse.y <= buttonY + buttonHeight;
-
-		if (isWithinX && isWithinY)
-			*state = PLAYING;
-	}
-}
-
-void randomize_pipe_size(PipePair *pair, int playerSize)
-{
-	int minHeight = pair->container.height * .25;
-	int available = pair->container.height - 2 * (2 * playerSize + minHeight);
-	int first = rand() % available;
-	int second = available - first;
-
-	pair->topHeight = first + minHeight;
-	pair->bottHeight = second + minHeight;
-}
-
-void reset_pipe(PipePair *pair, int pipeCount, int pipeSpacing, int playerSize)
-{
-	int x = (pipeCount - 1) * (pair->container.width + pipeSpacing);
-
-	pair->container.x = x + pipeSpacing;
-
-	randomize_pipe_size(pair, playerSize);
-}
-
-void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
-{
-	float speed = -5;
-
-	int padding = 100;
-
-	for (int i = 0; i < pipeCount; i++)
-	{
-		int idx = (*firstIdx + i) % pipeCount;
-
-		PipePair *pair = &pipes[i];
-
-		char str[32];
-
-		snprintf(str, sizeof(str), "item %d", i);
-
-		// DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->container.height, ORANGE);
-		DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->topHeight, RED);
-		DrawRectangle(pair->container.x, pair->container.y + pair->container.height - pair->bottHeight, pair->container.width, pair->bottHeight, RED);
-		// DrawText(str, pair->container.x + 10, pair->container.y + 10, 10, YELLOW);
-
-		pair->container.x += speed;
+		DrawCircle(xi, yi, liveSize, RED);
 	}
 }
 
@@ -185,50 +286,90 @@ void draw_score(int score)
 	DrawText(str, textX, textY, fontSize, RED);
 }
 
+void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
+{
+	float speed = -.5;
+	// float speed = -5;
+
+	int padding = 100;
+
+	for (int i = 0; i < pipeCount; i++)
+	{
+		int idx = (*firstIdx + i) % pipeCount;
+
+		PipePair *pair = &pipes[i];
+
+		DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->topHeight, RED);
+		DrawRectangle(pair->container.x, pair->container.y + pair->container.height - pair->bottHeight, pair->container.width, pair->bottHeight, RED);
+
+		pair->container.x += speed;
+	}
+}
+
+void randomize_pipe_size(PipePair *pair, int playerSize)
+{
+	int minHeight = pair->container.height * .25;
+	int available = pair->container.height - 2 * (2 * playerSize + minHeight);
+	int first = rand() % available;
+	int second = available - first;
+
+	pair->topHeight = first + minHeight;
+	pair->bottHeight = second + minHeight;
+}
+
+void reset_pipe(PipePair *pair, int pipeCount, int pipeSpacing, int playerSize)
+{
+	int x = (pipeCount - 1) * (pair->container.width + pipeSpacing);
+
+	pair->container.x = x + pipeSpacing;
+	pair->impacted = false;
+
+	randomize_pipe_size(pair, playerSize);
+}
+
 bool rects_overlap(Vector2 l1, Vector2 r1, Vector2 l2, Vector2 r2)
 {
 	if (l1.x > r2.x || l2.x > r1.x)
 		return false;
 
-	if (l1.y < r2.y || l2.y < r1.y)
+	if (r1.y < l2.y || r2.y < l1.y)
 		return false;
 
 	return true;
 }
 
-bool detect_collision(PipePair *pairs, int pipeCount, Player *player)
+PipePair *detect_collision(PipePair *pairs, int pipeCount, Player *player)
 {
 	for (int i = 0; i < pipeCount; i++)
 	{
-		PipePair pair = pairs[i];
-		Vector2 topPipeTopLeft = {.x = pair.container.x, .y = pair.container.y};
-		Vector2 topPipeBottRight = {.x = pair.container.x + pair.container.width, .y = pair.container.y + pair.topHeight};
-		Vector2 bottPipeTopLeft = {.x = pair.container.x, .y = pair.container.y + pair.container.height - pair.bottHeight};
-		Vector2 bottPipeBottRight = {.x = pair.container.x + pair.container.width, .y = pair.container.y + pair.container.height};
-
-		DrawCircle(topPipeTopLeft.x, topPipeTopLeft.y, 10, LIGHTGRAY);
-		DrawCircle(topPipeBottRight.x, topPipeBottRight.y, 10, DARKGRAY);
-
-		DrawCircle(bottPipeTopLeft.x, bottPipeTopLeft.y, 10, GREEN);
-		DrawCircle(bottPipeBottRight.x, bottPipeBottRight.y, 10, YELLOW);
+		PipePair *pair = &pairs[i];
+		Vector2 topPipeTopLeft = {.x = pair->container.x, .y = pair->container.y};
+		Vector2 topPipeBottRight = {.x = pair->container.x + pair->container.width, .y = pair->container.y + pair->topHeight};
+		Vector2 bottPipeTopLeft = {.x = pair->container.x, .y = pair->container.y + pair->container.height - pair->bottHeight};
+		Vector2 bottPipeBottRight = {.x = pair->container.x + pair->container.width, .y = pair->container.y + pair->container.height};
 
 		Vector2 playerTopLeft = {.x = player->position.x - player->size / 2, .y = player->position.y - player->size / 2};
 		Vector2 playerBottRight = {.x = player->position.x + player->size / 2, .y = player->position.y + player->size / 2};
-
-		DrawCircle(playerTopLeft.x, playerTopLeft.y, 10, ORANGE);
-		DrawCircle(playerBottRight.x, playerBottRight.y, 10, PINK);
 
 		bool intersect = rects_overlap(topPipeTopLeft, topPipeBottRight, playerTopLeft, playerBottRight) ||
 						 rects_overlap(bottPipeTopLeft, bottPipeBottRight, playerTopLeft, playerBottRight);
 
 		if (intersect)
-			return true;
+			return pair;
 	}
 
-	return false;
+	return NULL;
 }
 
-void play(PipePair *pairs, int pipeCount, int *firstIdx, int pipeSpacing, Player *player, int *score, bool *keyUpPressed)
+void play(enum State *state,
+		  int *lives,
+		  PipePair *pairs,
+		  int pipeCount,
+		  int *firstIdx,
+		  int pipeSpacing,
+		  Player *player,
+		  int *score,
+		  bool *keyUpPressed)
 {
 	float maxMag = 5;
 	float gravity = .25;
@@ -244,21 +385,37 @@ void play(PipePair *pairs, int pipeCount, int *firstIdx, int pipeSpacing, Player
 	if (IsKeyReleased(KEY_UP))
 		*keyUpPressed = false;
 
+	if (IsKeyPressed(KEY_P))
+	{
+		*state = PAUSED;
+
+		return;
+	}
+
 	player->acceleration.y += gravity;
 
 	update_player(&(*player));
 	limit_player_velocity(&(*player), maxMag);
 	draw_player(player);
-	draw_pipes(pairs, pipeCount, firstIdx, pipeSpacing);
+	draw_pipes(pairs, pipeCount, firstIdx,
+			   pipeSpacing);
 	draw_score(*score);
+	draw_lives(*lives);
 
-	bool collided = detect_collision(pairs, pipeCount, player);
+	PipePair *collisioned = detect_collision(pairs, pipeCount, player);
 
-	if (collided)
+	if (collisioned != NULL)
+
 	{
-		printf("fuck!\n");
+		*lives -= 1;
 
-		return;
+		collisioned->impacted = true;
+
+		if (*lives == 0)
+		{
+			*state = GAME_OVER;
+			return;
+		}
 	}
 
 	PipePair *first = &pairs[*firstIdx];
@@ -302,6 +459,18 @@ PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSi
 	return pipes;
 }
 
+void reset_actors(int *score, Player *player, PipePair *pairs, int pairCount, int *firstIdx, int pipeWidth, int pipeSpacing)
+{
+	*score = 0;
+
+	player->position.y = 300;
+
+	for (int i = 0; i < pairCount; i++)
+		pairs[i].container.x = i * (pipeWidth + pipeSpacing) + WIDTH;
+
+	*firstIdx = 0;
+}
+
 int main()
 {
 	InitWindow(WIDTH, HEIGHT, "Flappy Bird");
@@ -311,6 +480,7 @@ int main()
 	int score = 0;
 	bool keyUpPressed = false;
 
+	int lives = 5;
 	int firstIdx = 0;
 	int pipeWidth = 50;
 	int pipeSpacing = 200;
@@ -325,23 +495,27 @@ int main()
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
 
-	while (!WindowShouldClose()) // run the loop until the user presses ESCAPE or presses the Close button on the window
+	while (!WindowShouldClose())
 	{
 		BeginDrawing();
 
 		ClearBackground(RAYWHITE);
 
 		if (state == START)
+		{
+			reset_actors(&score, &player, pipes, pipeCount, &firstIdx, pipeWidth, pipeSpacing);
 			draw_start_screen(&state);
+		}
 		else if (state == PLAYING)
-			play(pipes, pipeCount, &firstIdx, pipeSpacing, &player, &score, &keyUpPressed);
-
-		// draw_pipes(pipes, pipeCount, &firstIdx, pipeSpacing);
+			play(&state, &lives, pipes, pipeCount, &firstIdx, pipeSpacing, &player, &score, &keyUpPressed);
+		else if (state == PAUSED)
+			draw_paused_screen(&state);
+		else if (state == GAME_OVER)
+			draw_game_over_screen(&state, score);
 
 		EndDrawing();
 	}
 
-	// destroy the window and cleanup the OpenGL context
 	CloseWindow();
 
 	free(pipes);
