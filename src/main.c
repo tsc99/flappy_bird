@@ -1,5 +1,8 @@
 #define WIDTH 800
 #define HEIGHT 600
+#define MAX_LIVES 5
+#define MAX_STUFF_TIME 60 // x
+#define MAX_FLICKER 30
 
 #include <stdbool.h>
 #include <stdlib.h> // x
@@ -22,6 +25,7 @@ typedef struct Player
 	Vector2 position;
 	Vector2 velocity;
 	Vector2 acceleration;
+	int flicker;
 	int size;
 
 } Player;
@@ -62,8 +66,17 @@ void draw_player(Player *player)
 {
 	int x = player->position.x - player->size / 2;
 	int y = player->position.y - player->size / 2;
+	unsigned char alpha = 255;
 
-	DrawRectangle(x, y, player->size, player->size, RED);
+	if (player->flicker < MAX_FLICKER)
+	{
+		alpha = fabs(sin(player->flicker / 3.0)) * 255;
+		player->flicker += 1;
+	}
+
+	Color color = {.r = 255, .g = 0, .b = 0, .a = alpha};
+
+	DrawRectangle(x, y, player->size, player->size, color);
 }
 
 bool is_button_clicked(int x, int y, int width, int height)
@@ -245,7 +258,7 @@ void draw_lives(int lives)
 	int liveSize = 10;
 	int gap = 10;
 	int padding = 10;
-	int containerWidth = lives * liveSize + 2 * padding + (lives - 1) * gap;
+	int containerWidth = MAX_LIVES * liveSize + 2 * padding + (MAX_LIVES - 1) * gap;
 	int containerHeight = liveSize + 2 * padding;
 	int marginTop = 100;
 	int marginRight = 20;
@@ -256,7 +269,7 @@ void draw_lives(int lives)
 
 	for (int i = 0; i < lives; i++)
 	{
-		int xi = containerX + padding + gap * (i - 1) + i * liveSize;
+		int xi = containerX + padding + gap * (i - 1) + 2 * i * liveSize;
 		int yi = containerY + (containerHeight - liveSize) / 2;
 
 		DrawCircle(xi, yi, liveSize, RED);
@@ -288,8 +301,8 @@ void draw_score(int score)
 
 void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
 {
-	float speed = -.5;
-	// float speed = -5;
+	// float speed = -.5;
+	float speed = -5;
 
 	int padding = 100;
 
@@ -343,6 +356,10 @@ PipePair *detect_collision(PipePair *pairs, int pipeCount, Player *player)
 	for (int i = 0; i < pipeCount; i++)
 	{
 		PipePair *pair = &pairs[i];
+
+		if (pair->impacted)
+			continue;
+
 		Vector2 topPipeTopLeft = {.x = pair->container.x, .y = pair->container.y};
 		Vector2 topPipeBottRight = {.x = pair->container.x + pair->container.width, .y = pair->container.y + pair->topHeight};
 		Vector2 bottPipeTopLeft = {.x = pair->container.x, .y = pair->container.y + pair->container.height - pair->bottHeight};
@@ -411,6 +428,8 @@ void play(enum State *state,
 
 		collisioned->impacted = true;
 
+		player->flicker = 0;
+
 		if (*lives == 0)
 		{
 			*state = GAME_OVER;
@@ -464,6 +483,7 @@ void reset_actors(int *score, Player *player, PipePair *pairs, int pairCount, in
 	*score = 0;
 
 	player->position.y = 300;
+	player->flicker = MAX_FLICKER;
 
 	for (int i = 0; i < pairCount; i++)
 		pairs[i].container.x = i * (pipeWidth + pipeSpacing) + WIDTH;
@@ -476,11 +496,16 @@ int main()
 	InitWindow(WIDTH, HEIGHT, "Flappy Bird");
 
 	enum State state = START;
-	Player player = {.position = {WIDTH / 10, 300}, .velocity = {0, 0}, .acceleration = {0, 0}, .size = 30};
+	Player player = {
+		.position = {WIDTH / 10, 300},
+		.velocity = {0, 0},
+		.acceleration = {0, 0},
+		.flicker = MAX_FLICKER,
+		.size = 30};
 	int score = 0;
 	bool keyUpPressed = false;
 
-	int lives = 5;
+	int lives = MAX_LIVES;
 	int firstIdx = 0;
 	int pipeWidth = 50;
 	int pipeSpacing = 200;
@@ -494,6 +519,8 @@ int main()
 
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
+
+	int stuffTime = MAX_STUFF_TIME;
 
 	while (!WindowShouldClose())
 	{
