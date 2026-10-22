@@ -1,7 +1,6 @@
 #define WIDTH 800
 #define HEIGHT 600
 #define MAX_LIVES 5
-#define MAX_STUFF_TIME 60 // x
 #define MAX_FLICKER 30
 
 #include <stdbool.h>
@@ -25,9 +24,10 @@ typedef struct Player
 	Vector2 position;
 	Vector2 velocity;
 	Vector2 acceleration;
+	Texture2D image;
+	float imageScale;
 	int flicker;
 	int size;
-
 } Player;
 
 typedef struct PipePair
@@ -66,6 +66,7 @@ void draw_player(Player *player)
 {
 	int x = player->position.x - player->size / 2;
 	int y = player->position.y - player->size / 2;
+	Vector2 imagePosition = {.x = x, .y = y};
 	unsigned char alpha = 255;
 
 	if (player->flicker < MAX_FLICKER)
@@ -74,9 +75,9 @@ void draw_player(Player *player)
 		player->flicker += 1;
 	}
 
-	Color color = {.r = 255, .g = 0, .b = 0, .a = alpha};
+	Color color = {.r = 255, .g = 255, .b = 255, .a = alpha};
 
-	DrawRectangle(x, y, player->size, player->size, color);
+	DrawTextureEx(player->image, imagePosition, 0, player->imageScale, color);
 }
 
 bool is_button_clicked(int x, int y, int width, int height)
@@ -258,9 +259,9 @@ void draw_lives(int lives)
 	int liveSize = 10;
 	int gap = 10;
 	int padding = 10;
-	int containerWidth = MAX_LIVES * liveSize + 2 * padding + (MAX_LIVES - 1) * gap;
+	int containerWidth = 2 * MAX_LIVES * liveSize + (MAX_LIVES - 1) * gap + 2 * padding;
 	int containerHeight = liveSize + 2 * padding;
-	int marginTop = 100;
+	int marginTop = 25;
 	int marginRight = 20;
 	int containerX = WIDTH - marginRight - containerWidth;
 	int containerY = marginTop;
@@ -269,8 +270,8 @@ void draw_lives(int lives)
 
 	for (int i = 0; i < lives; i++)
 	{
-		int xi = containerX + padding + gap * (i - 1) + 2 * i * liveSize;
-		int yi = containerY + (containerHeight - liveSize) / 2;
+		int xi = containerX + padding + gap * i + 2 * liveSize * i + liveSize;
+		int yi = containerY + containerHeight / 2;
 
 		DrawCircle(xi, yi, liveSize, RED);
 	}
@@ -478,12 +479,12 @@ PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSi
 	return pipes;
 }
 
-void reset_actors(int *score, Player *player, PipePair *pairs, int pairCount, int *firstIdx, int pipeWidth, int pipeSpacing)
+void reset_actors(int *score, Player *player, int *lives, PipePair *pairs, int pairCount, int *firstIdx, int pipeWidth, int pipeSpacing)
 {
 	*score = 0;
-
 	player->position.y = 300;
 	player->flicker = MAX_FLICKER;
+	*lives = MAX_LIVES;
 
 	for (int i = 0; i < pairCount; i++)
 		pairs[i].container.x = i * (pipeWidth + pipeSpacing) + WIDTH;
@@ -495,13 +496,27 @@ int main()
 {
 	InitWindow(WIDTH, HEIGHT, "Flappy Bird");
 
+	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
+	SearchAndSetResourceDir("resources");
+
+	// Tell the window to use vsync and work on high DPI displays
+	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
+
+	SetTargetFPS(60);
+
 	enum State state = START;
+	Texture2D image = LoadTexture("bird.png");
+	float imageSize = 256;
+	float playerSize = 30;
+	float imageScale = playerSize / imageSize;
 	Player player = {
 		.position = {WIDTH / 10, 300},
 		.velocity = {0, 0},
 		.acceleration = {0, 0},
+		.image = image,
+		.imageScale = imageScale,
 		.flicker = MAX_FLICKER,
-		.size = 30};
+		.size = (int)playerSize};
 	int score = 0;
 	bool keyUpPressed = false;
 
@@ -512,16 +527,6 @@ int main()
 	int pipeCount = compute_obstacle_count(pipeWidth, pipeSpacing);
 	PipePair *pipes = make_pipes(pipeCount, pipeWidth, pipeSpacing, player.size);
 
-	// Tell the window to use vsync and work on high DPI displays
-	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-
-	SetTargetFPS(60);
-
-	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
-	SearchAndSetResourceDir("resources");
-
-	int stuffTime = MAX_STUFF_TIME;
-
 	while (!WindowShouldClose())
 	{
 		BeginDrawing();
@@ -530,7 +535,7 @@ int main()
 
 		if (state == START)
 		{
-			reset_actors(&score, &player, pipes, pipeCount, &firstIdx, pipeWidth, pipeSpacing);
+			reset_actors(&score, &player, &lives, pipes, pipeCount, &firstIdx, pipeWidth, pipeSpacing);
 			draw_start_screen(&state);
 		}
 		else if (state == PLAYING)
