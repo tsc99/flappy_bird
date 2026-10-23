@@ -2,6 +2,7 @@
 #define HEIGHT 600
 #define MAX_LIVES 5
 #define MAX_FLICKER 30
+#define PI 3.14159265358979323846
 
 #include <stdbool.h>
 #include <stdlib.h> // x
@@ -37,6 +38,16 @@ typedef struct PipePair
 	int topHeight;
 	int bottHeight;
 } PipePair;
+
+typedef struct PipeTexture
+{
+	Texture2D image;
+	// int naturalWidth;
+	// int naturalHeight;
+	int width;
+	int height;
+	float scale;
+} PipeTexture;
 
 void update_player(Player *player)
 {
@@ -300,12 +311,8 @@ void draw_score(int score)
 	DrawText(str, textX, textY, fontSize, RED);
 }
 
-void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
+void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing, PipeTexture *pipeTexture)
 {
-	// float speed = -.5;
-	float speed = -5;
-
-	int padding = 100;
 
 	for (int i = 0; i < pipeCount; i++)
 	{
@@ -313,10 +320,26 @@ void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
 
 		PipePair *pair = &pipes[i];
 
-		DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->topHeight, RED);
+		// DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->topHeight, RED);
 		DrawRectangle(pair->container.x, pair->container.y + pair->container.height - pair->bottHeight, pair->container.width, pair->bottHeight, RED);
 
-		pair->container.x += speed;
+		// int topX = pair->container.x;
+		// int topY = pair->container.y - pipeTexture->height + pair->topHeight;
+		Vector2 topTexturePosition = {.x = pair->container.x, .y = pair->container.y - pipeTexture->height + pair->topHeight};
+		Vector2 bottTexturePosition = {.x = pair->container.x, .y = pair->container.y + pair->container.height - pair->bottHeight};
+
+		DrawTextureEx(pipeTexture->image, topTexturePosition, 0, pipeTexture->scale, WHITE);
+		DrawTextureEx(pipeTexture->image, bottTexturePosition, PI, pipeTexture->scale, WHITE);
+	}
+}
+
+void update_pipes(PipePair *pairs, int pipeCount)
+{
+	float speed = -5;
+
+	for (int i = 0; i < pipeCount; i++)
+	{
+		pairs[i].container.x += speed;
 	}
 }
 
@@ -387,7 +410,8 @@ void play(enum State *state,
 		  int pipeSpacing,
 		  Player *player,
 		  int *score,
-		  bool *keyUpPressed)
+		  bool *keyUpPressed,
+		  PipeTexture *pipeTexture)
 {
 	float maxMag = 5;
 	float gravity = .25;
@@ -412,11 +436,15 @@ void play(enum State *state,
 
 	player->acceleration.y += gravity;
 
+	update_pipes(pairs, pipeCount);
 	update_player(&(*player));
 	limit_player_velocity(&(*player), maxMag);
 	draw_player(player);
-	draw_pipes(pairs, pipeCount, firstIdx,
-			   pipeSpacing);
+	draw_pipes(pairs,
+			   pipeCount,
+			   firstIdx,
+			   pipeSpacing,
+			   pipeTexture);
 	draw_score(*score);
 	draw_lives(*lives);
 
@@ -503,9 +531,8 @@ int main()
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
 
 	SetTargetFPS(60);
-
 	enum State state = START;
-	Texture2D image = LoadTexture("bird.png");
+	Texture2D playerImage = LoadTexture("bird.png");
 	float imageSize = 256;
 	float playerSize = 30;
 	float imageScale = playerSize / imageSize;
@@ -513,7 +540,7 @@ int main()
 		.position = {WIDTH / 10, 300},
 		.velocity = {0, 0},
 		.acceleration = {0, 0},
-		.image = image,
+		.image = playerImage,
 		.imageScale = imageScale,
 		.flicker = MAX_FLICKER,
 		.size = (int)playerSize};
@@ -527,6 +554,18 @@ int main()
 	int pipeCount = compute_obstacle_count(pipeWidth, pipeSpacing);
 	PipePair *pipes = make_pipes(pipeCount, pipeWidth, pipeSpacing, player.size);
 
+	Texture2D pipeImage = LoadTexture("pipe.png");
+	int pipeImageNaturalWidth = 128;
+	int pipeImageNaturalHeight = 1024;
+	float pipeImageScale = (float)pipeWidth / pipeImageNaturalWidth;
+	// float pipeImageScale = (float)pipeImageNaturalWidth / pipeWidth;
+	int pipeImageWidth = pipeWidth;
+	int pipeImageHeight = pipeImageNaturalHeight * pipeImageScale;
+	PipeTexture pipeTexture = {.image = pipeImage,
+							   .width = pipeImageWidth,
+							   .height = pipeImageHeight,
+							   .scale = pipeImageScale};
+
 	while (!WindowShouldClose())
 	{
 		BeginDrawing();
@@ -539,7 +578,7 @@ int main()
 			draw_start_screen(&state);
 		}
 		else if (state == PLAYING)
-			play(&state, &lives, pipes, pipeCount, &firstIdx, pipeSpacing, &player, &score, &keyUpPressed);
+			play(&state, &lives, pipes, pipeCount, &firstIdx, pipeSpacing, &player, &score, &keyUpPressed, &pipeTexture);
 		else if (state == PAUSED)
 			draw_paused_screen(&state);
 		else if (state == GAME_OVER)
