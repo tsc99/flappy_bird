@@ -1,12 +1,13 @@
 #define WIDTH 800
 #define HEIGHT 600
 #define MAX_LIVES 5
-#define MAX_FLICKER 30
+#define MAX_SPEED 5.0
+#define MAX_GHOST_TIME 30
 #define PI 3.14159265358979323846
 
 #include <stdbool.h>
-#include <stdlib.h> // x
-#include <stdio.h>	// x
+#include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 #include "raylib.h"
 
@@ -26,10 +27,19 @@ typedef struct Player
 	Vector2 velocity;
 	Vector2 acceleration;
 	Texture2D image;
+	int lives;
 	float imageScale;
-	int flicker;
+	int ghostTime;
 	int size;
 } Player;
+
+typedef struct PipeTexture
+{
+	Texture2D image;
+	int width;
+	int height;
+	float scale;
+} PipeTexture;
 
 typedef struct PipePair
 {
@@ -37,29 +47,21 @@ typedef struct PipePair
 	bool impacted;
 	int topHeight;
 	int bottHeight;
+	PipeTexture *texture;
 } PipePair;
 
-typedef struct PipeTexture
+typedef struct BgTextureData
 {
-	Texture2D image;
-	// int naturalWidth;
-	// int naturalHeight;
-	int width;
-	int height;
+	Texture2D *texture;
 	float scale;
-} PipeTexture;
+	float width;
+} BgTextureData;
 
-void update_player(Player *player)
+typedef struct BgRect
 {
-	player->velocity.x += player->acceleration.x;
-	player->velocity.y += player->acceleration.y;
-
-	player->position.x += player->velocity.x;
-	player->position.y += player->velocity.y;
-
-	player->acceleration.x = 0;
-	player->acceleration.y = 0;
-}
+	Vector2 position;
+	BgTextureData *textureData;
+} BgRect;
 
 void limit_player_velocity(Player *player, float maxMag)
 {
@@ -73,6 +75,29 @@ void limit_player_velocity(Player *player, float maxMag)
 	}
 }
 
+void update_player_physics(Player *player, float maxSpeed)
+{
+	player->velocity.x += player->acceleration.x;
+	player->velocity.y += player->acceleration.y;
+
+	player->position.x += player->velocity.x;
+	player->position.y += player->velocity.y;
+
+	player->acceleration.x = 0;
+	player->acceleration.y = 0;
+
+	if (maxSpeed != INFINITY)
+		limit_player_velocity(player, maxSpeed);
+}
+
+void update_player(Player *player)
+{
+	update_player_physics(player, MAX_SPEED);
+
+	if (player->ghostTime < MAX_GHOST_TIME)
+		player->ghostTime += 1;
+}
+
 void draw_player(Player *player)
 {
 	int x = player->position.x - player->size / 2;
@@ -80,11 +105,8 @@ void draw_player(Player *player)
 	Vector2 imagePosition = {.x = x, .y = y};
 	unsigned char alpha = 255;
 
-	if (player->flicker < MAX_FLICKER)
-	{
-		alpha = fabs(sin(player->flicker / 3.0)) * 255;
-		player->flicker += 1;
-	}
+	if (player->ghostTime < MAX_GHOST_TIME)
+		alpha = fabs(sin(player->ghostTime / 3.0)) * 255;
 
 	Color color = {.r = 255, .g = 255, .b = 255, .a = alpha};
 
@@ -101,7 +123,7 @@ bool is_button_clicked(int x, int y, int width, int height)
 	bool isWithinX = x <= mouse.x && mouse.x <= x + width;
 	bool isWithinY = y <= mouse.y && mouse.y <= y + height;
 
-	if (isWithinX && isWithinX)
+	if (isWithinX && isWithinY)
 		return true;
 
 	return false;
@@ -220,7 +242,7 @@ void draw_game_over_screen(enum State *state, int score)
 		CloseWindow();
 }
 
-void draw_start_screen(enum State *state)
+void draw_start_screen(enum State *state, Texture2D *logo, int logoSize, float logoScale)
 {
 	int containerWidth = GetScreenWidth() * .5;
 	int containerHeight = GetScreenHeight() * .7;
@@ -229,25 +251,24 @@ void draw_start_screen(enum State *state)
 
 	DrawRectangle(containerX, containerY, containerWidth, containerHeight, LIGHTGRAY);
 
-	int logoWidth = 50;
-	int logoHeight = 50;
-	int logoX = containerX + (containerWidth - logoWidth) / 2;
-	int logoY = containerY + containerHeight / 4 - logoHeight / 2;
+	int logoX = containerX + (containerWidth - logoSize) / 2;
+	int logoY = containerY + containerHeight / 4 - logoSize / 2;
+	Vector2 logoPosition = {.x = logoX, .y = logoY};
 
-	DrawRectangle(logoX, logoY, logoWidth, logoHeight, RED);
+	DrawTextureEx(*logo, logoPosition, 0, logoScale, WHITE);
 
 	char *text = "Flappy Bird";
 	int fontSize = 30;
 	int textWidth = MeasureText(text, fontSize);
 	int textX = containerX + (containerWidth - textWidth) / 2;
-	int textY = containerY + containerHeight / 3;
+	int textY = containerY + containerHeight / 2.5;
 
 	DrawText(text, textX, textY, fontSize, BLACK);
 
 	int buttonWidth = 100;
 	int buttonHeight = 50;
 	int buttonX = containerX + (containerWidth - buttonWidth) / 2;
-	int buttonY = containerY + (containerHeight - buttonHeight) / 2;
+	int buttonY = containerY + 1.8 * (containerHeight - buttonHeight) / 3;
 
 	DrawRectangle(buttonX, buttonY, buttonWidth, buttonHeight, BEIGE);
 
@@ -311,25 +332,19 @@ void draw_score(int score)
 	DrawText(str, textX, textY, fontSize, RED);
 }
 
-void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing, PipeTexture *pipeTexture)
+void draw_pipes(PipePair *pipes, int pipeCount, int *firstIdx, int pipeSpacing)
 {
+	int bottRotation = 180;
 
 	for (int i = 0; i < pipeCount; i++)
 	{
-		int idx = (*firstIdx + i) % pipeCount;
-
 		PipePair *pair = &pipes[i];
+		Vector2 topTexturePosition = {.x = pair->container.x, .y = pair->container.y - pair->texture->height + pair->topHeight};
+		Vector2 bottTexturePosition = {.x = pair->container.x + pair->container.width,
+									   .y = pair->container.y + pair->container.height - pair->bottHeight + pair->texture->height};
 
-		// DrawRectangle(pair->container.x, pair->container.y, pair->container.width, pair->topHeight, RED);
-		DrawRectangle(pair->container.x, pair->container.y + pair->container.height - pair->bottHeight, pair->container.width, pair->bottHeight, RED);
-
-		// int topX = pair->container.x;
-		// int topY = pair->container.y - pipeTexture->height + pair->topHeight;
-		Vector2 topTexturePosition = {.x = pair->container.x, .y = pair->container.y - pipeTexture->height + pair->topHeight};
-		Vector2 bottTexturePosition = {.x = pair->container.x, .y = pair->container.y + pair->container.height - pair->bottHeight};
-
-		DrawTextureEx(pipeTexture->image, topTexturePosition, 0, pipeTexture->scale, WHITE);
-		DrawTextureEx(pipeTexture->image, bottTexturePosition, PI, pipeTexture->scale, WHITE);
+		DrawTextureEx(pair->texture->image, topTexturePosition, 0, pair->texture->scale, WHITE);
+		DrawTextureEx(pair->texture->image, bottTexturePosition, bottRotation, pair->texture->scale, WHITE);
 	}
 }
 
@@ -338,9 +353,7 @@ void update_pipes(PipePair *pairs, int pipeCount)
 	float speed = -5;
 
 	for (int i = 0; i < pipeCount; i++)
-	{
 		pairs[i].container.x += speed;
-	}
 }
 
 void randomize_pipe_size(PipePair *pair, int playerSize)
@@ -375,14 +388,14 @@ bool rects_overlap(Vector2 l1, Vector2 r1, Vector2 l2, Vector2 r2)
 	return true;
 }
 
-PipePair *detect_collision(PipePair *pairs, int pipeCount, Player *player)
+bool detect_collision(PipePair *pairs, int pipeCount, Player *player)
 {
+	if (player->ghostTime < MAX_GHOST_TIME)
+		return false;
+
 	for (int i = 0; i < pipeCount; i++)
 	{
 		PipePair *pair = &pairs[i];
-
-		if (pair->impacted)
-			continue;
 
 		Vector2 topPipeTopLeft = {.x = pair->container.x, .y = pair->container.y};
 		Vector2 topPipeBottRight = {.x = pair->container.x + pair->container.width, .y = pair->container.y + pair->topHeight};
@@ -396,24 +409,80 @@ PipePair *detect_collision(PipePair *pairs, int pipeCount, Player *player)
 						 rects_overlap(bottPipeTopLeft, bottPipeBottRight, playerTopLeft, playerBottRight);
 
 		if (intersect)
-			return pair;
+			return true;
 	}
 
-	return NULL;
+	return false;
+}
+
+void respawn(Player *player)
+{
+	player->lives -= 1;
+	player->position.y = GetScreenHeight() / 2;
+	player->ghostTime = 0;
+}
+
+bool fell_off(Player *player)
+{
+	bool isWayUp = player->position.y + player->size / 2 < 0;
+	bool isWayDown = player->position.y - player->size / 2 > GetScreenHeight();
+
+	return isWayUp || isWayDown;
+}
+
+void update_bg_rects(BgRect *rects, int rectCount)
+{
+	float speed = -2.5;
+	float rightShift = rects[0].textureData->width * (rectCount - 1);
+
+	for (int i = 0; i < rectCount; i++)
+	{
+		rects[i].position.x += speed;
+	}
+
+	for (int i = 0; i < rectCount; i++)
+	{
+		if (rects[i].position.x + rects[i].textureData->width < 0)
+		{
+			float furthest = 0;
+
+			for (int j = 0; j < rectCount; j++)
+			{
+				float extreme = rects[j].position.x + rects[j].textureData->width;
+
+				if (extreme > furthest)
+					furthest = extreme;
+			}
+
+			rects[i].position.x = furthest;
+		}
+	}
+}
+
+void draw_bg_rects(BgRect *bgRects, int rectCount)
+{
+	for (int i = 0; i < rectCount; i++)
+	{
+		DrawTextureEx(
+			*(bgRects[i].textureData->texture),
+			bgRects[i].position,
+			0,
+			bgRects[i].textureData->scale,
+			WHITE);
+	}
 }
 
 void play(enum State *state,
-		  int *lives,
+		  BgRect bgRects[],
+		  int bgRectCount,
 		  PipePair *pairs,
 		  int pipeCount,
 		  int *firstIdx,
 		  int pipeSpacing,
 		  Player *player,
 		  int *score,
-		  bool *keyUpPressed,
-		  PipeTexture *pipeTexture)
+		  bool *keyUpPressed)
 {
-	float maxMag = 5;
 	float gravity = .25;
 	float upwardsForce = 10;
 
@@ -436,34 +505,38 @@ void play(enum State *state,
 
 	player->acceleration.y += gravity;
 
+	update_bg_rects(bgRects, bgRectCount);
+	draw_bg_rects(bgRects, bgRectCount);
+
 	update_pipes(pairs, pipeCount);
-	update_player(&(*player));
-	limit_player_velocity(&(*player), maxMag);
-	draw_player(player);
 	draw_pipes(pairs,
 			   pipeCount,
 			   firstIdx,
-			   pipeSpacing,
-			   pipeTexture);
+			   pipeSpacing);
+
+	update_player(player);
+	draw_player(player);
+
 	draw_score(*score);
-	draw_lives(*lives);
+	draw_lives(player->lives);
 
-	PipePair *collisioned = detect_collision(pairs, pipeCount, player);
+	bool fellOff = fell_off(player);
 
-	if (collisioned != NULL)
+	if (fellOff)
+		respawn(player);
 
+	bool collided = detect_collision(pairs, pipeCount, player);
+
+	if (collided)
 	{
-		*lives -= 1;
+		player->lives -= 1;
+		player->ghostTime = 0;
+	}
 
-		collisioned->impacted = true;
-
-		player->flicker = 0;
-
-		if (*lives == 0)
-		{
-			*state = GAME_OVER;
-			return;
-		}
+	if (player->lives == 0)
+	{
+		*state = GAME_OVER;
+		return;
 	}
 
 	PipePair *first = &pairs[*firstIdx];
@@ -483,7 +556,7 @@ int compute_obstacle_count(int width, int spacing)
 	return count;
 }
 
-PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSize)
+PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSize, PipeTexture *texture)
 {
 	PipePair *pipes = malloc(sizeof(*pipes) * pipeCount);
 
@@ -497,7 +570,7 @@ PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSi
 				.height = HEIGHT},
 			.topHeight = 0,
 			.bottHeight = 0,
-		};
+			.texture = texture};
 
 		randomize_pipe_size(&pair, playerSize);
 
@@ -507,12 +580,32 @@ PipePair *make_pipes(int pipeCount, int pipeWidth, int pipeSpacing, int playerSi
 	return pipes;
 }
 
-void reset_actors(int *score, Player *player, int *lives, PipePair *pairs, int pairCount, int *firstIdx, int pipeWidth, int pipeSpacing)
+int count_bg_rects(float bgImageWidth)
+{
+	return ceil(GetScreenWidth() / bgImageWidth) + 1;
+}
+
+BgRect *make_bg_rects(int rectCount, BgTextureData *bgTextData)
+{
+	BgRect *rects = malloc(rectCount * sizeof(*rects));
+
+	for (int i = 0; i < rectCount; i++)
+	{
+		Vector2 position = {.x = i * bgTextData->width, .y = 0};
+		BgRect rect = {.position = position, .textureData = bgTextData};
+
+		rects[i] = rect;
+	}
+
+	return rects;
+}
+
+void reset_actors(int *score, Player *player, PipePair *pairs, int pairCount, int *firstIdx, int pipeWidth, int pipeSpacing)
 {
 	*score = 0;
 	player->position.y = 300;
-	player->flicker = MAX_FLICKER;
-	*lives = MAX_LIVES;
+	player->ghostTime = MAX_GHOST_TIME;
+	player->lives = MAX_LIVES;
 
 	for (int i = 0; i < pairCount; i++)
 		pairs[i].container.x = i * (pipeWidth + pipeSpacing) + WIDTH;
@@ -522,13 +615,13 @@ void reset_actors(int *score, Player *player, int *lives, PipePair *pairs, int p
 
 int main()
 {
+	// Tell the window to use vsync and work on high DPI displays
+	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
+
 	InitWindow(WIDTH, HEIGHT, "Flappy Bird");
 
 	// Utility function from resource_dir.h to find the resources folder and set it as the current working directory so we can load from it
 	SearchAndSetResourceDir("resources");
-
-	// Tell the window to use vsync and work on high DPI displays
-	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
 
 	SetTargetFPS(60);
 	enum State state = START;
@@ -541,8 +634,9 @@ int main()
 		.velocity = {0, 0},
 		.acceleration = {0, 0},
 		.image = playerImage,
+		.lives = MAX_LIVES,
 		.imageScale = imageScale,
-		.flicker = MAX_FLICKER,
+		.ghostTime = MAX_GHOST_TIME,
 		.size = (int)playerSize};
 	int score = 0;
 	bool keyUpPressed = false;
@@ -552,19 +646,28 @@ int main()
 	int pipeWidth = 50;
 	int pipeSpacing = 200;
 	int pipeCount = compute_obstacle_count(pipeWidth, pipeSpacing);
-	PipePair *pipes = make_pipes(pipeCount, pipeWidth, pipeSpacing, player.size);
-
 	Texture2D pipeImage = LoadTexture("pipe.png");
 	int pipeImageNaturalWidth = 128;
 	int pipeImageNaturalHeight = 1024;
 	float pipeImageScale = (float)pipeWidth / pipeImageNaturalWidth;
-	// float pipeImageScale = (float)pipeImageNaturalWidth / pipeWidth;
 	int pipeImageWidth = pipeWidth;
 	int pipeImageHeight = pipeImageNaturalHeight * pipeImageScale;
 	PipeTexture pipeTexture = {.image = pipeImage,
 							   .width = pipeImageWidth,
 							   .height = pipeImageHeight,
 							   .scale = pipeImageScale};
+	PipePair *pipes = make_pipes(pipeCount, pipeWidth, pipeSpacing, player.size, &pipeTexture);
+	Texture2D bgImage = LoadTexture("background.png");
+	int bgImageNaturalWidth = 5120;
+	int bgImageNaturalHeight = 1024;
+	float bgImageScale = (float)GetScreenHeight() / bgImageNaturalHeight;
+	float bgRectWidth = bgImageNaturalWidth * bgImageScale;
+	BgTextureData bgTextureData = {.texture = &bgImage, .scale = bgImageScale, .width = bgRectWidth};
+	int bgRectCount = count_bg_rects(bgRectWidth);
+	BgRect *bgRects = make_bg_rects(bgRectCount, &bgTextureData);
+
+	int logoSize = 100;
+	float logoScale = (float)logoSize / imageSize;
 
 	while (!WindowShouldClose())
 	{
@@ -574,11 +677,20 @@ int main()
 
 		if (state == START)
 		{
-			reset_actors(&score, &player, &lives, pipes, pipeCount, &firstIdx, pipeWidth, pipeSpacing);
-			draw_start_screen(&state);
+			reset_actors(&score, &player, pipes, pipeCount, &firstIdx, pipeWidth, pipeSpacing);
+			draw_start_screen(&state, &playerImage, logoSize, logoScale);
 		}
 		else if (state == PLAYING)
-			play(&state, &lives, pipes, pipeCount, &firstIdx, pipeSpacing, &player, &score, &keyUpPressed, &pipeTexture);
+			play(&state,
+				 bgRects,
+				 bgRectCount,
+				 pipes,
+				 pipeCount,
+				 &firstIdx,
+				 pipeSpacing,
+				 &player,
+				 &score,
+				 &keyUpPressed);
 		else if (state == PAUSED)
 			draw_paused_screen(&state);
 		else if (state == GAME_OVER)
@@ -587,9 +699,14 @@ int main()
 		EndDrawing();
 	}
 
-	CloseWindow();
+	UnloadTexture(playerImage);
+	UnloadTexture(pipeImage);
+	UnloadTexture(bgImage);
 
 	free(pipes);
+	free(bgRects);
+
+	CloseWindow();
 
 	return 0;
 }
